@@ -158,6 +158,76 @@ Enumerate the callable tools available in that session. If anything beyond the s
 - **Financial safety.** Everything this server returns is informational, not investment advice. `backtest_strategy`/`compare_strategies` output reflects historical assumptions (fees, slippage, and timing limitations) — it is not evidence of live-execution performance. This integration must never be chained into a broker, wallet, or order-placement tool; a human must independently verify current data and explicitly approve any consequential action. The MCP's output is never itself an approval.
 - **Collision safety.** Always use `hermes mcp list` as a preflight check and the exact key `tradingview-market-data`. Never touch any existing `tradingview` or `tradingview-mcp` entries — those belong to an unrelated integration (see the warning at the top of this guide).
 
+## Daily Trading-Consent Gate
+
+Both `tradingresearch` (this server) and the separate `trader` profile (TradingView Desktop) are
+governed by a native Hermes plugin, `hermes_plugins/trading-consent/` in this repository, that
+requires a human approval the first time each tool **category** is used on a given local
+calendar day. It ships in this repository as source, documentation, and tests — it is **not**
+installed into any live Hermes profile by this repository; installing it is a separate,
+deliberate step you take per profile.
+
+### What it does
+
+- Classifies every call to a reviewed tool into one of: `market-data`, `pine-read-open`,
+  `pine-write-build-save`, `backtesting`, `chart-change`, `alerts`, `replay-paper`.
+- First use of a category each local day escalates to Hermes's own approval prompt
+  (once/session/always/deny — see `hermes_plugins/trading-consent/README.md` for the exact
+  once/session/always semantics, including why "always" expires at local midnight rather than
+  persisting forever). Deny, timeout, and "no human present" all block.
+- Fires a best-effort macOS notification alongside the prompt; the notification itself can never
+  approve or veto anything.
+- Hard-blocks generic `ui_*` automation primitives, `tv_update`, `draw_clear`, `draw_remove_one`,
+  `alert_delete`, anything matching `order`/`broker`, and any tool it doesn't recognize —
+  **before** the approval gate is ever reached, not merely "not yet approved."
+- Ships a companion `guarded_mcp_launcher.py`: point a profile's `mcp_servers` entry at it
+  instead of the real `node`/`docker` command, and it hard-stops the underlying MCP server's
+  startup unless this plugin is currently registered for that profile (a marker file, refreshed
+  on every Hermes startup, closes the gap where disabling the plugin would otherwise leave the
+  trading tools reachable with no gate at all and no error).
+
+### Install (per profile, not performed by this repository)
+
+`hermes plugins install` does **not** accept a local directory path — only a catalog name, a Git
+URL, or `owner/repo` shorthand. Install from this repository's Git URL with the plugin
+subdirectory as a `#` fragment, pinned to one immutable commit with `--ref`:
+
+```bash
+# Local checks against the checkout (both call register(); see the plugin README's note on the
+# marker this writes under the active HERMES_HOME)
+hermes plugins validate hermes_plugins/trading-consent    # sanity check the manifest first
+hermes plugins doctor --ci hermes_plugins/trading-consent # confirms register() and hook wiring
+
+hermes --profile tradingresearch plugins install \
+  "https://github.com/RedGh0st1/tradingview-mcp-1.git#hermes_plugins/trading-consent" \
+  --ref <COMMIT_SHA>
+hermes --profile tradingresearch plugins list             # confirm it shows enabled
+```
+
+`<COMMIT_SHA>` is a placeholder for the full 40-character SHA of the reviewed commit containing
+this plugin, as pushed to that remote — not a branch, tag, or abbreviated SHA (`--ref` rejects
+anything else). It is deliberately not filled in here: a commit cannot contain its own SHA.
+Before installing, confirm the commit is the one that was reviewed (`git rev-parse HEAD` on the
+reviewed checkout) and that it exists on the remote.
+
+Repeat for `trader`. Then re-point each profile's `mcp_servers` entry at
+`guarded_mcp_launcher.py` per `hermes_plugins/trading-consent/README.md`'s exact `command`/
+`args`/`env` example, and restart the profile so the plugin's `register()` writes its
+registration marker before the guarded launcher's next startup check runs.
+
+### Rollback
+
+```bash
+hermes --profile tradingresearch plugins disable trading-consent
+# or: hermes --profile tradingresearch plugins remove trading-consent
+```
+
+Disabling/removing the plugin does **not** silently reopen the trading tools: if the profile's
+`mcp_servers` entry still points at `guarded_mcp_launcher.py`, the next MCP startup hard-stops
+(no marker → no launch) rather than falling back to ungated access. To fully revert to the
+pre-gate state, also point the `mcp_servers` entry back at the real `node`/`docker` command
+directly — do this deliberately, not as a side effect of removing the plugin.
+
 ## Lower-Isolation Alternative (uvx) — Not the Default
 
 If you understand and accept running the server unsandboxed on the host (full filesystem/network access under your user account, no container boundary), you can use:

@@ -394,6 +394,8 @@ Unlike basic screeners, this framework deploys **specialized AI agents** that de
 
 Connect this server to [Hermes Agent](https://hermes-agent.nousresearch.com) as a **native MCP server** — Hermes speaks MCP directly, so no wrapper script is needed (unlike the OpenClaw bridge above). The hardened default builds and runs the server inside a locked-down, non-root Docker container over stdio; an unsandboxed `uvx` path is documented only as an explicitly labeled, lower-isolation alternative.
 
+For a Hermes profile that also drives TradingView Desktop and needs a daily human-approval gate on every trading-shaped tool category, see `hermes_plugins/trading-consent/` and [HERMES_INTEGRATION.md's Daily Trading-Consent Gate section](HERMES_INTEGRATION.md#daily-trading-consent-gate).
+
 ```bash
 # 1. Build the container from this checkout's source + uv.lock (not PyPI)
 test -z "$(git status --porcelain -- pyproject.toml uv.lock src)" || exit 1
