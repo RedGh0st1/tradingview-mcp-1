@@ -200,7 +200,7 @@ hermes plugins doctor --ci hermes_plugins/trading-consent # confirms register() 
 
 hermes --profile tradingresearch plugins install \
   "https://github.com/RedGh0st1/tradingview-mcp-1.git#hermes_plugins/trading-consent" \
-  --ref <COMMIT_SHA>
+  --ref <COMMIT_SHA> --yes-deps --enable
 hermes --profile tradingresearch plugins list             # confirm it shows enabled
 ```
 
@@ -209,6 +209,17 @@ this plugin, as pushed to that remote — not a branch, tag, or abbreviated SHA 
 anything else). It is deliberately not filled in here: a commit cannot contain its own SHA.
 Before installing, confirm the commit is the one that was reviewed (`git rev-parse HEAD` on the
 reviewed checkout) and that it exists on the remote.
+
+At a commit that includes this documentation, Hermes's install-time scanner gives the plugin a
+**safe** verdict, so no override is needed. It reports one expected, informational MEDIUM finding:
+`subprocess.run` in the plugin's `__init__.py`, which is the intentional best-effort `osascript`
+notification (argument list, no shell). If the scanner ever reports **caution** for the pinned SHA, stop and
+review the findings rather than overriding by default. Add `--force` only after that review, and
+only together with that exact reviewed `--ref` SHA. A **dangerous** verdict blocks even with
+`--force`. Keep scanning enabled: do not disable `plugins.scan_on_install` instead. Note that
+`--force` also allows reinstalling over an existing copy. `--yes-deps` answers the
+dependency-consent prompt non-interactively (the plugin declares no Python dependencies), and
+`--enable` enables the plugin without a confirmation prompt.
 
 Repeat for `trader`. Then re-point each profile's `mcp_servers` entry at
 `guarded_mcp_launcher.py` per `hermes_plugins/trading-consent/README.md`'s exact `command`/

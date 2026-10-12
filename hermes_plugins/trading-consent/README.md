@@ -1,7 +1,8 @@
 # trading-consent
 
 Daily human-approval gate for the `trader` and `tradingresearch` Hermes profiles. See
-`../../HERMES_INTEGRATION.md` for the full integration story; this file covers just this plugin.
+`HERMES_INTEGRATION.md` at the root of this repository for the full integration story; this file
+covers just this plugin.
 
 ## What it does
 
@@ -71,12 +72,24 @@ an immutable commit:
 ```bash
 hermes --profile trader plugins install \
   "https://github.com/RedGh0st1/tradingview-mcp-1.git#hermes_plugins/trading-consent" \
-  --ref <COMMIT_SHA>
+  --ref <COMMIT_SHA> --yes-deps --enable
 ```
 
 `<COMMIT_SHA>` is a placeholder for the full 40-character SHA of the reviewed commit containing
-this plugin, as pushed to that remote (`--ref` rejects branches, tags, and short SHAs). Then
-confirm with `hermes --profile trader plugins list` and
+this plugin, as pushed to that remote (`--ref` rejects branches, tags, and short SHAs).
+
+At a commit that includes this documentation, Hermes's install-time scanner gives the plugin a
+**safe** verdict, so no override is needed. It reports one expected, informational MEDIUM finding:
+`subprocess.run` in `__init__.py`, which is the intentional best-effort `osascript` notification
+(argument list, no shell). If the scanner ever reports **caution** for the pinned SHA, stop and
+review the findings rather than overriding by default. Add `--force` only after that review, and
+only together with that exact reviewed `--ref` SHA. A **dangerous** verdict blocks even with
+`--force`. Keep scanning enabled: do not disable `plugins.scan_on_install` instead. Note that
+`--force` also allows reinstalling over an existing copy. `--yes-deps` answers the
+dependency-consent prompt non-interactively (the plugin declares no Python dependencies), and
+`--enable` enables the plugin without a confirmation prompt.
+
+Then confirm with `hermes --profile trader plugins list` and
 `hermes --profile trader plugins doctor trading-consent`. This repository does not install the
 plugin into any live profile, write `mcp_servers` config, or call any trading tool.
 
@@ -86,5 +99,6 @@ plugin into any live profile, write `mcp_servers` config, or call any trading to
 under whatever `HERMES_HOME` is active at that moment -- the current default profile if none is
 selected. This is a side effect of Hermes's validator, not of this repository. It's an inert
 marker file (`.trading_consent/registered.json`) with no effect unless something else also wires
-up `guarded_mcp_launcher.py` for that profile; safe to delete (`rm -rf ~/.hermes/.trading_consent`
-or the equivalent under the profile actually used) after validating.
+up `guarded_mcp_launcher.py` for that profile. After validating, it is safe to delete that one
+file by hand: `.trading_consent/registered.json` inside the `HERMES_HOME` that was active when you
+ran the check. Remove only that exact file, not the directory around it or anything broader.
