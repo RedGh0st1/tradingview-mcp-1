@@ -175,11 +175,11 @@ def test_real_dispatcher_isolates_a_crashing_sibling_callback(
 ):
     """Confirms, against Hermes's REAL invoke_hook (not our reading of its source), that one
     callback raising does not prevent another registered callback's valid directive from being
-    returned -- and that the raising callback itself contributes nothing (no synthesized block),
-    which is precisely the fail-open gap our own callback's top-level catch-all exists to avoid
-    for ITS OWN code path (see __init__.py). This test documents Hermes's real behavior; it does
-    not by itself prove our callback is safe -- test_hook_callback.py's TestCatchAllOnInternalError
-    proves that separately.
+    returned -- and that, because pre_tool_call is fail-closed, the raising callback is not
+    silently dropped: Hermes synthesizes a block directive for it naming the callback and the
+    exception, so a crashed guard vetoes the call rather than failing open. This test documents
+    Hermes's real behavior; it does not by itself prove our callback is safe --
+    test_hook_callback.py's TestCatchAllOnInternalError proves that separately.
     """
     def crashing_sibling(tool_name, args, **kwargs):
         raise RuntimeError("a different, broken plugin")
@@ -195,11 +195,15 @@ def test_real_dispatcher_isolates_a_crashing_sibling_callback(
     results = isolated_manager.invoke_hook(
         "pre_tool_call", tool_name="mcp__tradingview_desktop__replay_trade", args={},
     )
-    # Our callback's real directive is present; the crashing sibling contributed nothing (no
-    # exception propagated out of invoke_hook, no synthesized entry for it either).
-    actions = [r["action"] for r in results]
-    assert "approve" in actions
-    assert len(results) == 1  # only our callback's result -- the crash produced no entry at all
+    # No exception propagated out of invoke_hook. Our callback's real directive is present, and
+    # the crashing sibling contributed exactly one synthesized fail-closed block naming itself.
+    assert len(results) == 2
+    approves = [r for r in results if r["action"] == "approve"]
+    blocks = [r for r in results if r["action"] == "block"]
+    assert len(approves) == 1
+    assert len(blocks) == 1
+    assert "crashing_sibling" in blocks[0]["message"]
+    assert "RuntimeError" in blocks[0]["message"]
 
 
 def test_real_get_pre_tool_call_directive_details_resolves_approve(
