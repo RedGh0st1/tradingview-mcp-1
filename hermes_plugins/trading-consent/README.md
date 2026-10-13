@@ -1,0 +1,149 @@
+# trading-consent
+
+Daily human-approval gate for the `trader` and `tradingresearch` Hermes profiles. See
+`HERMES_INTEGRATION.md` at the root of this repository for the full integration story; this file
+covers just this plugin.
+
+## What it does
+
+- `pre_tool_call` classifies every call to a reviewed TradingView MCP tool into one of:
+  `market-data`, `pine-read-open`, `pine-write-build-save`, `backtesting`, `chart-change`,
+  `alerts`, `replay-paper` (see `categories.py` for the exact tool-name map).
+- The first call in a category on a given **local calendar day** escalates to Hermes's existing
+  human-approval gate (`tools.approval.request_tool_approval`) with a `rule_key` of
+  `<profile>:<category>:<local-date>`. Choosing **always** persists that exact key — it stops
+  applying the moment the date changes, i.e. it expires at local midnight, not permanently.
+  **once** persists nothing (re-prompts next call); **session** lasts for the running Hermes
+  process regardless of date; **deny**/**timeout**/no interactive human all BLOCK.
+- `pre_approval_request` (observer only, cannot approve) fires a best-effort macOS notification
+  alongside Hermes's own CLI/gateway prompt.
+- Generic `ui_*` tools, `tv_update`, `draw_clear`, `draw_remove_one`, `alert_delete`, anything
+  matching `order`/`broker`, and any tool this plugin doesn't recognize are **hard-blocked**
+  before the approval gate is ever reached — never merely "not yet approved."
+- `batch_run`'s `action` argument is validated against the real implementation's only three
+  branches (`screenshot`, `get_ohlcv`, `get_strategy_results`); anything else is blocked as
+  malformed. A valid call is classified `chart-change` (every branch mutates chart state).
+
+## Fail-open limitation this plugin closes itself
+
+Hermes's plugin dispatcher fails closed on a `pre_tool_call` **timeout** and on any failure
+**after** a directive is returned (gate error, deny, timeout, no human present) — but fails
+**open** if this callback raises an exception before returning any directive at all (the
+exception is logged and the result is simply dropped, indistinguishable from "no plugin has an
+opinion"). `_on_pre_tool_call` therefore wraps its entire body in a catch-all that returns an
+explicit `{"action": "block", ...}` on any internal error — see `__init__.py`'s docstring.
+
+## `guarded_mcp_launcher.py`
+
+A second, independent gate: disabling/removing this plugin from a profile's `plugins.enabled`
+would otherwise leave the underlying `mcp_servers` command fully functional with zero approval
+gate and no error. Point the profile's MCP entry at this launcher instead of the real command
+directly; it hard-stops (never execs the real command) unless the marker written by the exact
+Hermes process that spawned it is present, matches the profile, and still belongs to that same
+running process.
+
+**One marker per Hermes process.** Every process that loads this plugin -- the long-lived gateway,
+and also any one-shot `hermes` command that loads plugins (status, `plugins list`, etc.) -- writes
+only its own `.trading_consent/registered.<pid>.json`. The launcher reads only
+`registered.<os.getppid()>.json` (its parent, the Hermes process launching the MCP server) and
+also requires the `pid` recorded inside that file to match, so concurrent Hermes processes cannot
+overwrite or invalidate each other's markers. The legacy shared `registered.json` from earlier
+versions is ignored.
+
+**Bound to the process instance, not the clock.** Each marker records a `process_identity`: the
+writing process's start identity. The launcher looks up its parent's identity at launch time and
+requires an exact match. There is no wall-clock expiry, so a gateway that has been running for
+weeks keeps working. A marker left behind by an exited process stops matching once the OS hands
+that pid to a different process, so PID reuse cannot revive it. Markers without a
+`process_identity` (from the previous plugin version) are rejected.
+
+| Platform | Identity source | Format |
+| --- | --- | --- |
+| Linux | `/proc/sys/kernel/random/boot_id` + field 22 (`starttime`) of `/proc/<pid>/stat` | `linux:<boot_id>:<ticks since boot>` |
+| macOS | kernel `proc_pidinfo(pid, PROC_PIDTBSDINFO)` via `ctypes`/libproc: `pbi_start_tvsec` + `pbi_start_tvusec` | `darwin:<epoch seconds>.<microseconds>` |
+| Windows, other | not supported | the launcher always hard-stops |
+
+The macOS identity is the kernel's own process start time at microsecond precision, so two
+processes that held the same pid within the same second still have different identities. The
+kernel answer is accepted only if it is complete and self-consistent: the full 136-byte
+`proc_bsdinfo` struct was written, it names the requested pid, and the start time is plausible
+(non-zero seconds, microseconds below 1,000,000). There is no fallback to a weaker source such as
+`ps`.
+
+If the identity cannot be determined -- the parent process is gone or owned by another user,
+libproc or `/proc` is unavailable, the kernel answer fails those checks, or the platform is
+unsupported -- no marker is written and the launcher hard-stops. It never falls back to an
+unchecked launch. Markers carrying an identity in any other format, including the whole-second
+`darwin:<seconds>` format from an earlier revision, are rejected.
+
+Markers left by exited processes are inert and are deliberately never auto-deleted: deleting by
+"that pid is no longer running" races with PID reuse and could delete a new process's valid
+marker.
+
+This requires the plugin's `register()` to run inside the Hermes process that spawns MCP servers,
+which is Hermes's default (`plugins.isolation: in_process`). Under `plugins.isolation: host`,
+plugin code runs in a separate plugin-host process, so the marker's pid can never equal the
+launcher's parent and the launcher fails closed (hard stop) rather than open.
+
+```yaml
+# illustrative only — not written to any live config by this plugin
+mcp_servers:
+  tradingview-desktop:            # trader profile
+    command: python3
+    args: [/path/to/hermes_plugins/trading-consent/guarded_mcp_launcher.py, node, /path/to/tradingview-mcp/src/server.js]
+    env:
+      TRADING_CONSENT_PROFILE: trader
+
+  tradingview-market-data:        # tradingresearch profile
+    command: python3
+    args: [/path/to/hermes_plugins/trading-consent/guarded_mcp_launcher.py, docker, run, --rm, -i, --read-only, --tmpfs, /tmp, --cap-drop, ALL, --security-opt, no-new-privileges, "tradingview-mcp-hermes:<tag>"]
+    env:
+      TRADING_CONSENT_PROFILE: tradingresearch
+```
+
+`TRADING_CONSENT_PROFILE_HOME` overrides the launcher's default `~/.hermes/profiles/<profile>`
+guess for a non-default `HERMES_HOME`. Both env values are plain identifiers, never secrets.
+
+The real command is `execvp`'d directly — no `shell=True`, no shell metacharacter interpretation
+of any argument.
+
+## Installing (not performed by this repository)
+
+Install per-profile with Hermes's own plugin tooling. `hermes plugins install` does not accept a
+local directory path; install from the Git URL with this directory as a `#` fragment, pinned to
+an immutable commit:
+
+```bash
+hermes --profile trader plugins install \
+  "https://github.com/RedGh0st1/tradingview-mcp-1.git#hermes_plugins/trading-consent" \
+  --ref <COMMIT_SHA> --yes-deps --enable
+```
+
+`<COMMIT_SHA>` is a placeholder for the full 40-character SHA of the reviewed commit containing
+this plugin, as pushed to that remote (`--ref` rejects branches, tags, and short SHAs).
+
+At a commit that includes this documentation, Hermes's install-time scanner gives the plugin a
+**safe** verdict, so no override is needed. It reports one expected, informational MEDIUM
+finding: `subprocess.run` in `__init__.py`, which is the intentional best-effort `osascript`
+notification (argument list, no shell). If the scanner ever reports **caution** for the pinned SHA, stop and
+review the findings rather than overriding by default. Add `--force` only after that review, and
+only together with that exact reviewed `--ref` SHA. A **dangerous** verdict blocks even with
+`--force`. Keep scanning enabled: do not disable `plugins.scan_on_install` instead. Note that
+`--force` also allows reinstalling over an existing copy. `--yes-deps` answers the
+dependency-consent prompt non-interactively (the plugin declares no Python dependencies), and
+`--enable` enables the plugin without a confirmation prompt.
+
+Then confirm with `hermes --profile trader plugins list` and
+`hermes --profile trader plugins doctor trading-consent`. This repository does not install the
+plugin into any live profile, write `mcp_servers` config, or call any trading tool.
+
+**Note on `hermes plugins validate`/`doctor` run against a plain path** (e.g.
+`hermes plugins validate hermes_plugins/trading-consent`, with no `--profile`): Hermes's own
+"capability probe" calls this plugin's real `register()`, which writes its registration marker
+under whatever `HERMES_HOME` is active at that moment -- the current default profile if none is
+selected. This is a side effect of Hermes's validator, not of this repository. It's an inert
+marker file (`.trading_consent/registered.<pid>.json`, named for the short-lived validator
+process) that no launcher will ever accept, since no MCP server is spawned by that process. It is
+safe to leave in place. If you want to tidy up, delete only that exact file by hand, inside the
+`HERMES_HOME` that was active when you ran the check -- never the directory around it, and never
+a marker whose pid belongs to a running Hermes process.

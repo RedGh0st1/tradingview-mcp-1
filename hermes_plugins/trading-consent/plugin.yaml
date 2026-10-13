@@ -1,0 +1,23 @@
+name: trading-consent
+version: "1.0.0"
+description: >-
+  Daily human-approval gate for the trader/tradingresearch Hermes profiles. Classifies every
+  call to a reviewed TradingView MCP tool into one of seven categories (market-data,
+  pine-read-open, pine-write-build-save, backtesting, chart-change, alerts, replay-paper),
+  requires a human approval the first time each category is used on a given local calendar day
+  (once/session/always, with "always" expiring at local midnight), fires a best-effort macOS
+  notification alongside the approval prompt, and hard-blocks generic ui_* automation
+  primitives, tv_update, draw_clear/draw_remove_one, alert_delete, any live brokerage/order
+  tool, and any unrecognized trading tool -- before the human-approval gate is ever reached.
+  Ships with hermes_plugins/trading-consent/guarded_mcp_launcher.py, a companion launcher that
+  hard-stops the underlying MCP server's startup unless this plugin's profile-bound
+  registration marker is present and fresh, so disabling the plugin cannot silently leave the
+  trading tools reachable without a gate.
+author: "Red / tradingview-mcp"
+# provides_hooks is the field hermes plugins validate/doctor actually cross-check against the
+# hooks register() runs at load time (confirmed by running `hermes plugins validate` against
+# this directory: an earlier draft using only `hooks:` -- the key some other installed plugins
+# use -- failed validation with "undeclared hooks registered (not in provides_hooks)").
+provides_hooks:
+  - pre_tool_call
+  - pre_approval_request
