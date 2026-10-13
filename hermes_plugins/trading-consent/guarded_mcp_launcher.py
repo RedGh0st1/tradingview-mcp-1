@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Guarded MCP launcher: hard-stops an MCP server's startup unless a profile-bound
-trading-consent plugin-registration marker is present, fresh, AND recorded by the exact Hermes
-process that is spawning this launcher right now (marker pid == os.getppid()) -- freshness alone
-is not the gate; see marker.py:check_marker's require_parent_pid docstring.
+trading-consent plugin-registration marker is present, fresh, AND written by the exact Hermes
+process that is spawning this launcher right now: only ``registered.<os.getppid()>.json`` is
+read, never any other process's marker -- see marker.py:check_marker.
 
 Usage (this is what ``hermes mcp add``'s --command/--args should point at, not the underlying
 node/docker command directly):
@@ -84,22 +84,22 @@ def main(argv: list[str]) -> "NoReturn":  # type: ignore[name-defined]
     plugin_id = os.environ.get(ENV_PLUGIN_ID, "").strip() or DEFAULT_PLUGIN_ID
     profile_home = _resolve_profile_home(profile)
 
-    # The hard gate is exact-parent-pid match, not mere freshness/liveness: Hermes spawns this
+    # The hard gate is the parent's own marker, not mere freshness/liveness: Hermes spawns this
     # launcher as a direct child, so os.getppid() here IS the pid of the Hermes process trying to
-    # launch the MCP server right now. A marker recorded by any other process -- including a
-    # recently-alive one, including a prior Hermes run that has since exited and been replaced,
-    # e.g. because the plugin was disabled across a restart -- must fail, not merely a stale one.
+    # launch the MCP server right now, and only that process's per-pid marker file is read. A
+    # marker written by any other process -- a concurrent CLI command, a prior Hermes run that
+    # has since exited, one where the plugin was disabled across a restart -- is never consulted.
     result = check_marker(
-        profile_home, expected_profile=profile, expected_plugin_id=plugin_id,
-        require_parent_pid=os.getppid(),
+        profile_home, parent_pid=os.getppid(), expected_profile=profile,
+        expected_plugin_id=plugin_id,
     )
     if not result.ok:
         _fail(
             f"trading-consent plugin registration marker check failed for profile {profile!r} "
             f"at {profile_home}: {result.reason}. The underlying MCP server was NOT started. "
             "Ensure the trading-consent plugin is installed and enabled for this profile and "
-            "that Hermes has started at least once since (which writes/refreshes the marker), "
-            f"then retry. ({ENV_PROFILE_HOME} can override the profile-home guess if this "
+            "that the Hermes process launching this server loaded it (which writes that "
+            f"process's own marker), then retry. ({ENV_PROFILE_HOME} can override the profile-home guess if this "
             "installation uses a non-default HERMES_HOME.)"
         )
 

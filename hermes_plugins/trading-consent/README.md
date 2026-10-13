@@ -38,8 +38,23 @@ explicit `{"action": "block", ...}` on any internal error — see `__init__.py`'
 A second, independent gate: disabling/removing this plugin from a profile's `plugins.enabled`
 would otherwise leave the underlying `mcp_servers` command fully functional with zero approval
 gate and no error. Point the profile's MCP entry at this launcher instead of the real command
-directly; it hard-stops (never execs the real command) unless a marker this plugin's `register()`
-writes on every Hermes startup is present, matches the profile, and is fresh.
+directly; it hard-stops (never execs the real command) unless the marker written by the exact
+Hermes process that spawned it is present, matches the profile, and is fresh.
+
+**One marker per Hermes process.** Every process that loads this plugin -- the long-lived gateway,
+and also any one-shot `hermes` command that loads plugins (status, `plugins list`, etc.) -- writes
+only its own `.trading_consent/registered.<pid>.json`. The launcher reads only
+`registered.<os.getppid()>.json` (its parent, the Hermes process launching the MCP server) and
+also requires the `pid` recorded inside that file to match, so concurrent Hermes processes cannot
+overwrite or invalidate each other's markers. The legacy shared `registered.json` from earlier
+versions is ignored. Markers left by exited processes are inert and are deliberately never
+auto-deleted: deleting by "that pid is no longer running" races with PID reuse and could delete a
+new process's valid marker.
+
+This requires the plugin's `register()` to run inside the Hermes process that spawns MCP servers,
+which is Hermes's default (`plugins.isolation: in_process`). Under `plugins.isolation: host`,
+plugin code runs in a separate plugin-host process, so the marker's pid can never equal the
+launcher's parent and the launcher fails closed (hard stop) rather than open.
 
 ```yaml
 # illustrative only — not written to any live config by this plugin
@@ -98,7 +113,8 @@ plugin into any live profile, write `mcp_servers` config, or call any trading to
 "capability probe" calls this plugin's real `register()`, which writes its registration marker
 under whatever `HERMES_HOME` is active at that moment -- the current default profile if none is
 selected. This is a side effect of Hermes's validator, not of this repository. It's an inert
-marker file (`.trading_consent/registered.json`) with no effect unless something else also wires
-up `guarded_mcp_launcher.py` for that profile. After validating, it is safe to delete that one
-file by hand: `.trading_consent/registered.json` inside the `HERMES_HOME` that was active when you
-ran the check. Remove only that exact file, not the directory around it or anything broader.
+marker file (`.trading_consent/registered.<pid>.json`, named for the short-lived validator
+process) that no launcher will ever accept, since no MCP server is spawned by that process. It is
+safe to leave in place. If you want to tidy up, delete only that exact file by hand, inside the
+`HERMES_HOME` that was active when you ran the check -- never the directory around it, and never
+a marker whose pid belongs to a running Hermes process.

@@ -182,9 +182,13 @@ deliberate step you take per profile.
   **before** the approval gate is ever reached, not merely "not yet approved."
 - Ships a companion `guarded_mcp_launcher.py`: point a profile's `mcp_servers` entry at it
   instead of the real `node`/`docker` command, and it hard-stops the underlying MCP server's
-  startup unless this plugin is currently registered for that profile (a marker file, refreshed
-  on every Hermes startup, closes the gap where disabling the plugin would otherwise leave the
-  trading tools reachable with no gate at all and no error).
+  startup unless this plugin is currently registered in the exact Hermes process launching it.
+  Each Hermes process that loads the plugin writes its own per-process marker
+  (`.trading_consent/registered.<pid>.json`), and the launcher reads only its parent process's
+  marker, so a one-shot `hermes` command running alongside the gateway can never invalidate the
+  gateway's marker. This closes the gap where disabling the plugin would otherwise leave the
+  trading tools reachable with no gate at all and no error. It relies on Hermes's default
+  `plugins.isolation: in_process`; under `isolation: host` the launcher fails closed.
 
 ### Install (per profile, not performed by this repository)
 
@@ -223,8 +227,10 @@ dependency-consent prompt non-interactively (the plugin declares no Python depen
 
 Repeat for `trader`. Then re-point each profile's `mcp_servers` entry at
 `guarded_mcp_launcher.py` per `hermes_plugins/trading-consent/README.md`'s exact `command`/
-`args`/`env` example, and restart the profile so the plugin's `register()` writes its
-registration marker before the guarded launcher's next startup check runs.
+`args`/`env` example, and restart the profile (and any gateway serving it) so that the Hermes
+process which spawns the MCP server has loaded this version of the plugin and written its own
+per-process marker. Markers from older versions (`registered.json`) are ignored, so a process
+still running older plugin code will hard-stop on its next MCP launch until it is restarted.
 
 ### Rollback
 

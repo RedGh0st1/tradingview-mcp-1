@@ -15,6 +15,8 @@ contract mismatch when it does.
 
 from __future__ import annotations
 
+import os
+
 import sys
 import types
 import uuid
@@ -266,7 +268,7 @@ class TestRegistrationOrderingAgainstRealPluginContext:
         self, trading_consent_pkg, plugin_context, pinned_marker_home,
     ):
         trading_consent_pkg.register(plugin_context)
-        path = trading_consent_pkg._marker.marker_path(pinned_marker_home)
+        path = trading_consent_pkg._marker.marker_path(pinned_marker_home, os.getpid())
         assert path.is_file()
 
     def test_second_hook_registration_failing_leaves_no_marker(
@@ -290,7 +292,7 @@ class TestRegistrationOrderingAgainstRealPluginContext:
         with pytest.raises(RuntimeError, match="simulated"):
             trading_consent_pkg.register(plugin_context)
 
-        path = trading_consent_pkg._marker.marker_path(pinned_marker_home)
+        path = trading_consent_pkg._marker.marker_path(pinned_marker_home, os.getpid())
         assert not path.is_file(), "marker must not exist when registration only partially succeeded"
 
     def test_first_hook_registration_failing_leaves_no_marker(
@@ -304,5 +306,5 @@ class TestRegistrationOrderingAgainstRealPluginContext:
         with pytest.raises(RuntimeError, match="simulated"):
             trading_consent_pkg.register(plugin_context)
 
-        path = trading_consent_pkg._marker.marker_path(pinned_marker_home)
+        path = trading_consent_pkg._marker.marker_path(pinned_marker_home, os.getpid())
         assert not path.is_file()
