@@ -20,10 +20,10 @@ absent with no error at all.
 
 from __future__ import annotations
 
+import ctypes
 import json
 import os
 import re
-import subprocess
 import sys
 import tempfile
 import time
@@ -38,16 +38,34 @@ MARKER_FILENAME_TEMPLATE = "registered.{pid}.json"
 # process: the same pid reused later by a different process has a different start value. It
 # replaces wall-clock marker age as the authorization condition -- a long-running gateway's marker
 # stays valid for exactly as long as that gateway process lives, and no longer.
-#   linux:<boot_id>:<starttime clock ticks since boot>   (from /proc; boot_id rules out reboots)
-#   darwin:<process start, UTC epoch seconds>            (from /bin/ps -o lstart=)
+#   linux:<boot_id>:<starttime clock ticks since boot>    (from /proc; boot_id rules out reboots)
+#   darwin:<start tv_sec>.<start tv_usec, 6 digits>       (kernel, via libproc proc_pidinfo)
 _IDENTITY_RE = re.compile(
     r"^(?:linux:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9]{1,20}"
-    r"|darwin:[0-9]{1,20})$"
+    r"|darwin:[0-9]{1,20}\.[0-9]{6})$"
 )
-_PS_PATH = "/bin/ps"
-_PS_TIMEOUT_SECONDS = 5
-_MONTHS = {m: i for i, m in enumerate(
-    ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"), start=1)}
+
+# macOS <sys/proc_info.h>: proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &struct proc_bsdinfo, size).
+_LIBPROC_PATH = "/usr/lib/libproc.dylib"  # resolved from the dyld shared cache, not a file on disk
+_PROC_PIDTBSDINFO = 3
+_PROC_BSDINFO_SIZE = 136  # sizeof(struct proc_bsdinfo), checked against the SDK header
+
+
+class _ProcBsdInfo(ctypes.Structure):
+    """``struct proc_bsdinfo`` field-for-field (MAXCOMLEN = 16). Offsets verified against a C
+    program compiled with the macOS SDK: pbi_pid @12, pbi_start_tvsec @120, pbi_start_tvusec @128."""
+    _fields_ = [
+        ("pbi_flags", ctypes.c_uint32), ("pbi_status", ctypes.c_uint32),
+        ("pbi_xstatus", ctypes.c_uint32), ("pbi_pid", ctypes.c_uint32),
+        ("pbi_ppid", ctypes.c_uint32), ("pbi_uid", ctypes.c_uint32), ("pbi_gid", ctypes.c_uint32),
+        ("pbi_ruid", ctypes.c_uint32), ("pbi_rgid", ctypes.c_uint32),
+        ("pbi_svuid", ctypes.c_uint32), ("pbi_svgid", ctypes.c_uint32), ("rfu_1", ctypes.c_uint32),
+        ("pbi_comm", ctypes.c_char * 16), ("pbi_name", ctypes.c_char * 32),
+        ("pbi_nfiles", ctypes.c_uint32), ("pbi_pgid", ctypes.c_uint32),
+        ("pbi_pjobc", ctypes.c_uint32), ("e_tdev", ctypes.c_uint32), ("e_tpgid", ctypes.c_uint32),
+        ("pbi_nice", ctypes.c_int32),
+        ("pbi_start_tvsec", ctypes.c_uint64), ("pbi_start_tvusec", ctypes.c_uint64),
+    ]
 
 
 class ProcessIdentityError(Exception):
@@ -84,40 +102,41 @@ def _linux_identity(pid: int, proc_root: Path = Path("/proc")) -> str:
     return f"linux:{boot_id}:{_parse_proc_stat_starttime(stat_text)}"
 
 
-def _parse_ps_lstart(text: str) -> int:
-    """`ps -o lstart=` under LC_ALL=C TZ=UTC, e.g. ``Mon Oct 12 20:02:17 2026`` -> UTC epoch
-    seconds. Parsed by hand (not time.strptime) so the host process's locale cannot change it."""
-    parts = text.split()
-    if len(parts) != 5 or parts[1] not in _MONTHS:
-        raise ProcessIdentityError(f"unrecognised ps lstart output {text.strip()!r}")
-    _weekday, month, day, clock, year = parts
-    hms = clock.split(":")
-    if not (day.isdigit() and year.isdigit() and len(hms) == 3 and all(x.isdigit() for x in hms)):
-        raise ProcessIdentityError(f"unrecognised ps lstart output {text.strip()!r}")
-    import calendar
-    y, mo, d, hh, mm, ss = int(year), _MONTHS[month], int(day), int(hms[0]), int(hms[1]), int(hms[2])
-    # timegm silently normalises out-of-range fields (Oct 32 -> Nov 1), so range-check first.
-    if not (1970 <= y <= 9999 and 1 <= d <= calendar.monthrange(y, mo)[1]
-            and hh < 24 and mm < 60 and ss < 60):
-        raise ProcessIdentityError(f"unrecognised ps lstart output {text.strip()!r}")
-    return calendar.timegm((y, mo, d, hh, mm, ss, 0, 0, 0))
-
-
-def _darwin_identity(pid: int) -> str:
-    # Absolute path, explicit argv, no shell, and a pinned environment: lstart is printed in the
-    # caller's local time zone, and Hermes filters the environment it gives MCP subprocesses, so
-    # writer and launcher must not depend on whatever TZ/locale each happened to inherit.
+def _load_proc_pidinfo():
     try:
-        proc = subprocess.run(
-            [_PS_PATH, "-o", "lstart=", "-p", str(pid)],
-            capture_output=True, text=True, timeout=_PS_TIMEOUT_SECONDS,
-            env={"LC_ALL": "C", "TZ": "UTC", "PATH": "/usr/bin:/bin"},
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        raise ProcessIdentityError(f"cannot run {_PS_PATH} for pid {pid}: {exc}") from exc
-    if proc.returncode != 0 or not proc.stdout.strip():
-        raise ProcessIdentityError(f"{_PS_PATH} reports no process {pid} (exit {proc.returncode})")
-    return f"darwin:{_parse_ps_lstart(proc.stdout)}"
+        fn = ctypes.CDLL(_LIBPROC_PATH, use_errno=True).proc_pidinfo
+    except (OSError, AttributeError) as exc:
+        raise ProcessIdentityError(f"libproc proc_pidinfo unavailable: {exc}") from exc
+    fn.restype = ctypes.c_int
+    fn.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_uint64, ctypes.c_void_p, ctypes.c_int]
+    return fn
+
+
+def _darwin_identity(pid: int, *, proc_pidinfo=None) -> str:
+    """Kernel process start time with microsecond precision, from proc_pidinfo(PROC_PIDTBSDINFO).
+    There is deliberately no fallback (e.g. second-precision `ps`): anything short of a complete,
+    self-consistent kernel answer raises, and callers fail closed."""
+    if ctypes.sizeof(_ProcBsdInfo) != _PROC_BSDINFO_SIZE:
+        raise ProcessIdentityError(f"proc_bsdinfo layout mismatch ({ctypes.sizeof(_ProcBsdInfo)} bytes)")
+    fn = proc_pidinfo if proc_pidinfo is not None else _load_proc_pidinfo()
+    info = _ProcBsdInfo()
+    ctypes.set_errno(0)
+    try:
+        written = fn(pid, _PROC_PIDTBSDINFO, 0, ctypes.byref(info), ctypes.sizeof(info))
+    except (ctypes.ArgumentError, OSError) as exc:
+        raise ProcessIdentityError(f"proc_pidinfo failed for pid {pid}: {exc}") from exc
+    if written != ctypes.sizeof(info):
+        # 0 with errno ESRCH (no such process) / EPERM (not ours), or a short write: the buffer is
+        # not trustworthy -- on failure the kernel leaves it unfilled.
+        raise ProcessIdentityError(
+            f"proc_pidinfo(PROC_PIDTBSDINFO) for pid {pid} returned {written!r} "
+            f"(errno {ctypes.get_errno()}), expected {ctypes.sizeof(info)}")
+    if info.pbi_pid != pid:
+        raise ProcessIdentityError(f"proc_pidinfo answered for pid {info.pbi_pid}, not {pid}")
+    if info.pbi_start_tvsec <= 0 or info.pbi_start_tvusec >= 1_000_000:
+        raise ProcessIdentityError(
+            f"implausible start time {info.pbi_start_tvsec}.{info.pbi_start_tvusec} for pid {pid}")
+    return f"darwin:{info.pbi_start_tvsec}.{info.pbi_start_tvusec:06d}"
 
 
 def process_start_identity(pid: int) -> str:

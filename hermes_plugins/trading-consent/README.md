@@ -60,15 +60,21 @@ that pid to a different process, so PID reuse cannot revive it. Markers without 
 | Platform | Identity source | Format |
 | --- | --- | --- |
 | Linux | `/proc/sys/kernel/random/boot_id` + field 22 (`starttime`) of `/proc/<pid>/stat` | `linux:<boot_id>:<ticks since boot>` |
-| macOS | `/bin/ps -o lstart= -p <pid>` (argv list, no shell, `LC_ALL=C TZ=UTC` pinned) | `darwin:<UTC epoch seconds>` |
+| macOS | kernel `proc_pidinfo(pid, PROC_PIDTBSDINFO)` via `ctypes`/libproc: `pbi_start_tvsec` + `pbi_start_tvusec` | `darwin:<epoch seconds>.<microseconds>` |
 | Windows, other | not supported | the launcher always hard-stops |
 
-If the identity cannot be determined -- the parent process is gone, `/proc` or `/bin/ps` is
-unavailable or prints something unexpected, or the platform is unsupported -- no marker is
-written and the launcher hard-stops. It never falls back to an unchecked launch. The macOS value
-has one-second resolution, so a pid would have to be reused by a process started within the same
-second as the original. macOS allocates pids sequentially before wrapping, which makes that
-practically unreachable.
+The macOS identity is the kernel's own process start time at microsecond precision, so two
+processes that held the same pid within the same second still have different identities. The
+kernel answer is accepted only if it is complete and self-consistent: the full 136-byte
+`proc_bsdinfo` struct was written, it names the requested pid, and the start time is plausible
+(non-zero seconds, microseconds below 1,000,000). There is no fallback to a weaker source such as
+`ps`.
+
+If the identity cannot be determined -- the parent process is gone or owned by another user,
+libproc or `/proc` is unavailable, the kernel answer fails those checks, or the platform is
+unsupported -- no marker is written and the launcher hard-stops. It never falls back to an
+unchecked launch. Markers carrying an identity in any other format, including the whole-second
+`darwin:<seconds>` format from an earlier revision, are rejected.
 
 Markers left by exited processes are inert and are deliberately never auto-deleted: deleting by
 "that pid is no longer running" races with PID reuse and could delete a new process's valid
@@ -117,10 +123,9 @@ hermes --profile trader plugins install \
 this plugin, as pushed to that remote (`--ref` rejects branches, tags, and short SHAs).
 
 At a commit that includes this documentation, Hermes's install-time scanner gives the plugin a
-**safe** verdict, so no override is needed. It reports two expected, informational MEDIUM
-findings, both argument-list `subprocess.run` calls with no shell: in `__init__.py`, the
-intentional best-effort `osascript` notification; in `marker.py`, the macOS `/bin/ps` process
-start-identity lookup. If the scanner ever reports **caution** for the pinned SHA, stop and
+**safe** verdict, so no override is needed. It reports one expected, informational MEDIUM
+finding: `subprocess.run` in `__init__.py`, which is the intentional best-effort `osascript`
+notification (argument list, no shell). If the scanner ever reports **caution** for the pinned SHA, stop and
 review the findings rather than overriding by default. Add `--force` only after that review, and
 only together with that exact reviewed `--ref` SHA. A **dangerous** verdict blocks even with
 `--force`. Keep scanning enabled: do not disable `plugins.scan_on_install` instead. Note that

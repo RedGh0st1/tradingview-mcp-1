@@ -19,8 +19,8 @@ needs_identity = pytest.mark.skipif(
     not SUPPORTED_PLATFORM, reason="process start identity is unsupported (fails closed) here",
 )
 
-ID_A = "darwin:1700000001"
-ID_B = "darwin:1700000002"
+ID_A = "darwin:1700000001.000000"
+ID_B = "darwin:1700000002.000000"
 
 
 def _fake_identities(monkeypatch, module, mapping):
@@ -39,17 +39,21 @@ def _rewrite(path, **changes):
     path.write_text(json.dumps(data), encoding="utf-8")
 
 
-def _altered(identity):
-    """Same platform/format as *identity*, different start value -- what a different process that
-    later received the same pid would report."""
+def _same_second_other_process(identity):
+    """Same platform/format as *identity* and, on macOS, the SAME start second with a different
+    microsecond -- what a different process that received the same pid within that second would
+    report. (Linux starttime is a single tick counter, so it is simply bumped.)"""
     head, _, tail = identity.rpartition(":")
+    if head == "darwin":
+        sec, usec = tail.split(".")
+        return f"darwin:{sec}.{(int(usec) + 1) % 1_000_000:06d}"
     return f"{head}:{int(tail) + 1}"
 
 
 # --- identity: format, parsing, platform lookup --------------------------------------------------
 
 @pytest.mark.parametrize("identity", [
-    "darwin:1791849777",
+    "darwin:1791849777.000000", "darwin:1791850258.373621",
     "linux:0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0:123456",
 ])
 def test_valid_identity_formats(marker_mod, identity):
@@ -57,59 +61,131 @@ def test_valid_identity_formats(marker_mod, identity):
 
 
 @pytest.mark.parametrize("identity", [
-    None, "", 1791849777, "darwin:", "darwin:abc", "darwin:-1", "darwin:1 ", " darwin:1",
+    None, "", 1791849777, "darwin:", "darwin:abc", "darwin:-1", "darwin:1.000000 ", " darwin:1.000000",
     "win32:123", "linux:not-a-uuid:1", "linux:0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0:",
-    "darwin:1\n", "darwin:1:2", ["darwin:1"],
+    "darwin:1.000000\n", "darwin:1:2", ["darwin:1.000000"],
+    "darwin:1791849777",  # the earlier second-precision ps format is no longer accepted
+    "darwin:1791849777.37362", "darwin:1791849777.3736210", "darwin:1791849777.",
 ])
 def test_malformed_identities_are_rejected(marker_mod, identity):
     assert not marker_mod.is_valid_identity(identity)
 
 
-def test_parse_ps_lstart(marker_mod):
-    assert marker_mod._parse_ps_lstart("Mon Oct 12 20:02:17 2026    \n") == calendar.timegm(
-        (2026, 10, 12, 20, 2, 17, 0, 0, 0))
-    assert marker_mod._parse_ps_lstart("Fri Oct  2 01:02:03 2026") == calendar.timegm(
-        (2026, 10, 2, 1, 2, 3, 0, 0, 0))
+def test_proc_bsdinfo_struct_matches_the_sdk_layout(marker_mod):
+    """Offsets from a C program compiled against the macOS SDK's <sys/proc_info.h>."""
+    info = marker_mod._ProcBsdInfo
+    assert marker_mod.ctypes.sizeof(info) == 136 == marker_mod._PROC_BSDINFO_SIZE
+    assert info.pbi_pid.offset == 12
+    assert info.pbi_start_tvsec.offset == 120
+    assert info.pbi_start_tvusec.offset == 128
+    assert marker_mod._PROC_PIDTBSDINFO == 3
 
 
-@pytest.mark.parametrize("text", [
-    "", "garbage", "Mon Okt 12 20:02:17 2026", "Mon Oct 12 20:02 2026", "Mon Oct xx 20:02:17 2026",
-    "Mon Oct 12 20:02:17", "Mon Oct 32 20:02:17 2026", "Mon Oct 12 20:02:17 2026 extra",
-])
-def test_parse_ps_lstart_rejects_unexpected_output(marker_mod, text):
-    with pytest.raises(marker_mod.ProcessIdentityError):
-        marker_mod._parse_ps_lstart(text)
-
-
-def test_darwin_lookup_uses_absolute_ps_argv_no_shell_and_pinned_env(marker_mod, monkeypatch):
+def _fake_proc_pidinfo(marker_mod, *, ret=None, pid=None, tvsec=1700000000, tvusec=123, errno=0, raises=None):
+    """Stand-in for libproc's proc_pidinfo: fills the caller's struct like the kernel would."""
     calls = []
 
-    def fake_run(argv, **kwargs):
-        calls.append((argv, kwargs))
-        return subprocess.CompletedProcess(argv, 0, stdout="Mon Oct 12 20:02:17 2026\n", stderr="")
+    def fn(req_pid, flavor, arg, ref, size):
+        calls.append((req_pid, flavor, arg, size))
+        if raises is not None:
+            raise raises
+        info = ref._obj
+        info.pbi_pid = req_pid if pid is None else pid
+        info.pbi_start_tvsec = tvsec
+        info.pbi_start_tvusec = tvusec
+        marker_mod.ctypes.set_errno(errno)
+        return size if ret is None else ret
+    fn.calls = calls
+    return fn
 
-    monkeypatch.setattr(marker_mod.subprocess, "run", fake_run)
-    assert marker_mod._darwin_identity(4242) == "darwin:%d" % calendar.timegm((2026, 10, 12, 20, 2, 17, 0, 0, 0))
-    argv, kwargs = calls[0]
-    assert argv == ["/bin/ps", "-o", "lstart=", "-p", "4242"]
-    assert "shell" not in kwargs
-    assert kwargs["env"]["TZ"] == "UTC" and kwargs["env"]["LC_ALL"] == "C"
-    assert kwargs["timeout"] > 0
+
+def test_darwin_identity_from_proc_pidinfo(marker_mod):
+    fn = _fake_proc_pidinfo(marker_mod, tvsec=1791850258, tvusec=373621)
+    assert marker_mod._darwin_identity(4242, proc_pidinfo=fn) == "darwin:1791850258.373621"
+    assert fn.calls == [(4242, 3, 0, 136)]
 
 
-@pytest.mark.parametrize("outcome", ["nonzero", "empty", "garbage", "oserror", "timeout"])
-def test_darwin_lookup_failures_raise(marker_mod, monkeypatch, outcome):
-    def fake_run(argv, **kwargs):
-        if outcome == "oserror":
-            raise FileNotFoundError("/bin/ps")
-        if outcome == "timeout":
-            raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
-        rc, out = {"nonzero": (1, ""), "empty": (0, "  \n"), "garbage": (0, "???")}[outcome]
-        return subprocess.CompletedProcess(argv, rc, stdout=out, stderr="")
+def test_darwin_identity_zero_pads_microseconds(marker_mod):
+    fn = _fake_proc_pidinfo(marker_mod, tvsec=1791850258, tvusec=7)
+    assert marker_mod._darwin_identity(4242, proc_pidinfo=fn) == "darwin:1791850258.000007"
 
-    monkeypatch.setattr(marker_mod.subprocess, "run", fake_run)
+
+@pytest.mark.parametrize("kwargs", [
+    {"ret": 0, "errno": 3},          # ESRCH: no such process
+    {"ret": 0, "errno": 1},          # EPERM: another user's process
+    {"ret": -1, "errno": 22},
+    {"ret": 100},                    # short write: struct not fully filled
+    {"ret": 200},                    # over-long answer: not the struct we asked for
+    {"pid": 4343},                   # kernel answered for a different pid
+    {"tvsec": 0},                    # no start time
+    {"tvusec": 1_000_000},           # not a valid microsecond value
+    {"tvusec": 2 ** 63},
+    {"raises": OSError("dlsym")},
+    {"raises": "argument_error"},
+])
+def test_darwin_identity_rejects_failed_or_inconsistent_answers(marker_mod, kwargs):
+    if kwargs.get("raises") == "argument_error":
+        kwargs["raises"] = marker_mod.ctypes.ArgumentError("bad argument")
+    fn = _fake_proc_pidinfo(marker_mod, **kwargs)
     with pytest.raises(marker_mod.ProcessIdentityError):
-        marker_mod._darwin_identity(4242)
+        marker_mod._darwin_identity(4242, proc_pidinfo=fn)
+
+
+@pytest.mark.parametrize("error", [OSError("image not found"), AttributeError("proc_pidinfo")])
+def test_libproc_unavailable_fails_closed(marker_mod, monkeypatch, error):
+    def broken_cdll(*args, **kwargs):
+        raise error
+    monkeypatch.setattr(marker_mod.ctypes, "CDLL", broken_cdll)
+    with pytest.raises(marker_mod.ProcessIdentityError, match="libproc"):
+        marker_mod._darwin_identity(os.getpid())
+
+
+def test_struct_layout_mismatch_fails_closed(marker_mod, monkeypatch):
+    monkeypatch.setattr(marker_mod, "_PROC_BSDINFO_SIZE", 140)
+    with pytest.raises(marker_mod.ProcessIdentityError, match="layout"):
+        marker_mod._darwin_identity(4242, proc_pidinfo=_fake_proc_pidinfo(marker_mod))
+
+
+def test_no_second_precision_ps_fallback(marker_mod, plugin_dir, monkeypatch):
+    """When the kernel identity is unavailable on macOS, nothing weaker is substituted."""
+    source = (plugin_dir / "marker.py").read_text(encoding="utf-8")
+    assert "/bin/ps" not in source
+    assert "import subprocess" not in source
+    monkeypatch.setattr(marker_mod.sys, "platform", "darwin")
+    monkeypatch.setattr(marker_mod.ctypes, "CDLL", lambda *a, **k: (_ for _ in ()).throw(OSError("gone")))
+    with pytest.raises(marker_mod.ProcessIdentityError):
+        marker_mod.process_start_identity(os.getpid())
+
+
+def test_same_second_pid_reuse_is_rejected(marker_mod, monkeypatch, fresh_profile_home):
+    """Pi R-001: the earlier holder of pid 4242 and the later one started within the same second.
+    Whole-second identity would have matched; microsecond kernel identity must not."""
+    earlier, later = "darwin:1791850258.000001", "darwin:1791850258.999999"
+    marker_mod.write_marker(fresh_profile_home, profile="trader", plugin_id="trading-consent",
+                            pid=4242, process_identity=earlier)
+    _fake_identities(monkeypatch, marker_mod, {4242: later})
+    result = marker_mod.check_marker(fresh_profile_home, parent_pid=4242, expected_profile="trader")
+    assert not result.ok
+    assert "does not match" in result.reason
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS kernel identity")
+def test_real_same_second_processes_have_distinct_identities(marker_mod):
+    """Real processes started within the same wall-clock second get different identities."""
+    for _ in range(50):
+        procs = [subprocess.Popen([sys.executable, "-c", "import sys; sys.stdin.read()"],
+                                  stdin=subprocess.PIPE) for _ in range(2)]
+        try:
+            ids = [marker_mod.process_start_identity(p.pid) for p in procs]
+        finally:
+            for p in procs:
+                p.stdin.close()
+                p.wait(timeout=60)
+        seconds = {i.split(":")[1].split(".")[0] for i in ids}
+        if len(seconds) == 1:
+            assert ids[0] != ids[1]
+            return
+    pytest.fail("could not start two processes within the same second in 50 attempts")
 
 
 def _fake_proc(tmp_path, *, pid, stat, boot_id="0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0"):
@@ -332,7 +408,7 @@ def test_legacy_shared_marker_is_ignored(marker_mod, monkeypatch, fresh_profile_
 def test_one_process_writing_cannot_invalidate_another(marker_mod, monkeypatch, fresh_profile_home):
     """The live defect: the gateway registers, then one-shot CLI processes load the plugin and
     register too. The gateway's marker must be byte-for-byte untouched and still valid."""
-    ids = {4242: ID_A, 56147: "darwin:1700000147", 56148: "darwin:1700000148"}
+    ids = {4242: ID_A, 56147: "darwin:1700000147.000000", 56148: "darwin:1700000148.000000"}
     _fake_identities(monkeypatch, marker_mod, ids)
     gateway = marker_mod.write_marker(fresh_profile_home, profile="trader", plugin_id="trading-consent",
                                       pid=4242, process_identity=ID_A)
@@ -591,8 +667,7 @@ def test_real_launcher_blocks_marker_inherited_from_earlier_pid_holder(plugin_di
     )
     earlier_identity = writer.stdout.strip()
     assert marker_mod.is_valid_identity(earlier_identity)
-    if earlier_identity == marker_mod.process_start_identity(os.getpid()):
-        earlier_identity = _altered(earlier_identity)  # same-second start on darwin: force distinct
+    assert earlier_identity != marker_mod.process_start_identity(os.getpid())
     marker_mod.write_marker(fresh_profile_home, profile="trader", plugin_id="trading-consent",
                             pid=os.getpid(), process_identity=earlier_identity)
     _assert_blocked(_run_launcher(plugin_dir, fresh_profile_home), "does not match")
@@ -601,7 +676,7 @@ def test_real_launcher_blocks_marker_inherited_from_earlier_pid_holder(plugin_di
 @needs_identity
 def test_real_launcher_blocks_on_malformed_identity(plugin_dir, marker_mod, fresh_profile_home):
     path = marker_mod.write_marker(fresh_profile_home, profile="trader", plugin_id="trading-consent")
-    _rewrite(path, process_identity="darwin:; rm -rf /")
+    _rewrite(path, process_identity="darwin:; touch /tmp/pwned")
     _assert_blocked(_run_launcher(plugin_dir, fresh_profile_home), "process_identity")
 
 
@@ -614,3 +689,25 @@ def test_real_launcher_ignores_legacy_shared_marker(plugin_dir, marker_mod, fres
         "pid": os.getpid(), "process_identity": marker_mod.process_start_identity(os.getpid()),
     }), encoding="utf-8")
     _assert_blocked(_run_launcher(plugin_dir, fresh_profile_home))
+
+
+@needs_identity
+def test_real_launcher_blocks_same_second_earlier_pid_holder(plugin_dir, marker_mod, fresh_profile_home):
+    """Pi R-001 end to end: the marker under OUR pid carries an identity from the same start second
+    as us but a different sub-second value (macOS: microsecond; Linux: tick) -- i.e. a different
+    process that held this pid within the same second. The real launcher must hard-stop."""
+    ours = marker_mod.process_start_identity(os.getpid())
+    marker_mod.write_marker(fresh_profile_home, profile="trader", plugin_id="trading-consent",
+                            pid=os.getpid(), process_identity=_same_second_other_process(ours))
+    _assert_blocked(_run_launcher(plugin_dir, fresh_profile_home), "does not match")
+
+
+@needs_identity
+def test_real_launcher_blocks_legacy_second_precision_identity(plugin_dir, marker_mod, fresh_profile_home):
+    """A marker in the earlier whole-second format, even for the right second, is malformed now."""
+    ours = marker_mod.process_start_identity(os.getpid())
+    if not ours.startswith("darwin:"):
+        pytest.skip("macOS identity format")
+    path = marker_mod.write_marker(fresh_profile_home, profile="trader", plugin_id="trading-consent")
+    _rewrite(path, process_identity=ours.split(".")[0])
+    _assert_blocked(_run_launcher(plugin_dir, fresh_profile_home), "process_identity")

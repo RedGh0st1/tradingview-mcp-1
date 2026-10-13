@@ -188,10 +188,11 @@ deliberate step you take per profile.
   marker, so a one-shot `hermes` command running alongside the gateway can never invalidate the
   gateway's marker. Each marker is bound to the writing process's start identity, not to a
   wall-clock age: a long-running gateway stays valid for as long as it runs, and a marker whose
-  pid the OS later reuses for a different process does not match. Identity comes from `/proc` on
-  Linux and `/bin/ps` on macOS; on Windows and other platforms, or whenever it cannot be
-  determined, the launcher fails closed. This closes the gap where disabling the plugin would otherwise leave the
-  trading tools reachable with no gate at all and no error. It relies on Hermes's default
+  pid the OS later reuses for a different process -- even within the same second -- does not
+  match. Identity comes from `/proc` (boot id + start ticks) on Linux and from the kernel's
+  microsecond process start time (libproc `proc_pidinfo`) on macOS; on Windows and other
+  platforms, or whenever it cannot be determined, the launcher fails closed. This closes the gap
+  where disabling the plugin would otherwise leave the trading tools reachable with no gate at all and no error. It relies on Hermes's default
   `plugins.isolation: in_process`; under `isolation: host` the launcher fails closed.
 
 ### Install (per profile, not performed by this repository)
@@ -219,11 +220,10 @@ Before installing, confirm the commit is the one that was reviewed (`git rev-par
 reviewed checkout) and that it exists on the remote.
 
 At a commit that includes this documentation, Hermes's install-time scanner gives the plugin a
-**safe** verdict, so no override is needed. It reports two expected, informational MEDIUM
-findings, both argument-list `subprocess.run` calls with no shell: the intentional best-effort
-`osascript` notification in the plugin's `__init__.py`, and the macOS `/bin/ps` process
-start-identity lookup in `marker.py`. If the scanner ever reports **caution** for the pinned SHA, stop and
-review the findings rather than overriding by default. Add `--force` only after that review, and
+**safe** verdict, so no override is needed. It reports one expected, informational MEDIUM
+finding: `subprocess.run` in the plugin's `__init__.py`, which is the intentional best-effort
+`osascript` notification (argument list, no shell). If the scanner ever reports **caution** for
+the pinned SHA, stop and review the findings rather than overriding by default. Add `--force` only after that review, and
 only together with that exact reviewed `--ref` SHA. A **dangerous** verdict blocks even with
 `--force`. Keep scanning enabled: do not disable `plugins.scan_on_install` instead. Note that
 `--force` also allows reinstalling over an existing copy. `--yes-deps` answers the
