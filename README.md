@@ -9,21 +9,23 @@
 <a href="https://trendshift.io/repositories/25110" target="_blank"><img src="https://trendshift.io/api/badge/repositories/25110" alt="atilaahmettaner%2Ftradingview-mcp | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 **TradingView MCP server** — real-time market data, technical indicators, screeners, and backtesting for Claude, ChatGPT, Cursor, Copilot, and any MCP client. Stocks, crypto, forex & futures across global exchanges.
-Backtesting + live sentiment + Yahoo Finance + 37 technical-analysis tools — the most complete TradingView MCP toolkit, all in one server.
+Backtesting + live sentiment + Yahoo Finance + 39 technical-analysis tools — the most complete TradingView MCP toolkit, all in one server.
 
-**Don't want to install anything?** The [hosted server](https://pro.cryptosieve.com/?utm_source=github&utm_medium=readme&utm_content=top_cta) gives you all 37 tools as one connector URL for Claude, ChatGPT, Cursor and Copilot. From $9/mo with a 14-day money-back guarantee; self-hosting stays free.
+**Don't want to install anything?** [TradingMCP](https://tradingmcp.ai/?utm_source=github&utm_medium=readme&utm_content=top_cta), the hosted version of this server, gives you all 39 tools as one connector URL for Claude, ChatGPT, Cursor, Copilot or any MCP client. From $9/mo with a 14-day money-back guarantee; self-hosting stays free.
+
+**[Morning market brief in one prompt](https://tradingmcp.ai/?utm_source=github&utm_medium=readme&utm_content=brief):** ask "give me this morning's market brief" and get global indices, futures, the Bitcoin pulse and the hosted Markets panel in one answer. Charts are drawn right in the chat (demo below).
 
 <p align="center">
-  <img src=".github/assets/tradingview-mcp-demo.gif" width="820" alt="TradingView MCP in an AI chat: ask for the top gainers on Binance and get ranked, real-time results — one of 37 tools" />
+  <img src=".github/assets/tradingview-mcp-demo.gif" width="820" alt="TradingView MCP in an AI chat: ask for the top gainers on Binance and get ranked, real-time results — one of 39 tools" />
 </p>
 
-**🆕 The [hosted server](https://pro.cryptosieve.com/?utm_source=github&utm_medium=readme&utm_content=charts) now draws.** Ask for a chart and an interactive candlestick view (1d / 1h / 15m, optional Bollinger overlay) renders live **inside the conversation** via MCP Apps — and the AI reads the band values back to you:
+**🆕 The [hosted version (TradingMCP)](https://tradingmcp.ai/?utm_source=github&utm_medium=readme&utm_content=charts) now draws.** Ask for a chart and an interactive candlestick view (1d / 1h / 15m, optional Bollinger overlay) renders live **inside the conversation** via MCP Apps — and the AI reads the band values back to you:
 
 <p align="center">
   <img src="docs/assets/bollinger-15m-chart-demo.gif" width="820" alt="MCP Apps demo: asking Claude for a 15-minute Bollinger chart — an interactive candlestick chart with Bollinger Bands renders inside the conversation and Claude analyzes the band values" />
 </p>
 
-**[Paste one URL](https://pro.cryptosieve.com/?utm_source=github&utm_medium=readme&utm_content=paste_url) (or `pip install`), then just ask.** Real output, straight from the live server:
+**[Paste one URL](https://tradingmcp.ai/?utm_source=github&utm_medium=readme&utm_content=paste_url) (or `pip install`), then just ask.** Real output, straight from the live server:
 
 <p align="center">
   <img src="assets/showcase-top-gainers.png" width="820" alt="Real output: top crypto gainers on KuCoin with 24h change, RSI and signal — ranked table returned in chat" />
@@ -58,7 +60,7 @@ Backtest an RSI strategy on BTC on the daily timeframe
 | What you need | Nothing — public market data | TradingView Desktop, usually with a paid TradingView plan |
 | Where it works | Claude.ai, Claude Code, ChatGPT, Cursor, Copilot — any MCP client | Mostly Claude Code, on your own machine |
 | When your machine is off | Hosted version keeps answering, 24/7 | Stops |
-| Screeners & backtesting | Built in (37 tools, multi-exchange) | Whatever the TradingView UI offers |
+| Screeners & backtesting | Built in (39 tools, multi-exchange) | Whatever the TradingView UI offers |
 | Charts | Interactive in-conversation charts (MCP Apps, hosted) | TradingView's own charts |
 | Your TradingView account | Not needed, never touched | Drives your logged-in session |
 
@@ -70,7 +72,7 @@ If you want an AI clicking around *your* TradingView Desktop — editing Pine Sc
 > **Not financial advice.** Nothing produced by this software is investment, financial, legal, tax, or accounting advice. tradingview-mcp is an informational and educational analysis tool. Its outputs, including indicators, scores, signals, "trade setups", entries, stop losses, and targets, are computed from third party market data and are **not** recommendations to buy, sell, or hold any asset. It does not execute trades, manage money, or guarantee any result. Trading and investing carry a substantial risk of loss, and you can lose some or all of your capital. Always do your own research and consult a licensed professional before making any financial decision. You are solely responsible for your own decisions and for complying with the laws and regulations that apply to you. Market data may be delayed, inaccurate, or incomplete, and is provided without warranty.
 
 > [!TIP]
-> **Prefer zero setup? Use the hosted version.** [**pro.cryptosieve.com**](https://pro.cryptosieve.com/?utm_source=github&utm_medium=readme&utm_content=tip) serves all 37 tools as one connector URL for Claude.ai, ChatGPT, Copilot, and Cursor — no `uv`, `pandas`, or Python to wrangle. **From $9/mo (Pro) or $29/mo (Pro+ — higher limits), with a 14-day money-back guarantee.** Self-hosting stays free forever; hosted is just for folks who'd rather skip the ops. *(Full self-host vs hosted comparison in Quick Start below.)*
+> **Prefer zero setup? Use the hosted version.** [**TradingMCP**](https://tradingmcp.ai/?utm_source=github&utm_medium=readme&utm_content=tip) serves all 39 tools as one connector URL for Claude.ai, ChatGPT, Copilot, and Cursor — no `uv`, `pandas`, or Python to wrangle. **From $9/mo (Pro) or $29/mo (Pro+ — higher limits), with a 14-day money-back guarantee.** Self-hosting stays free forever; hosted is just for folks who'd rather skip the ops. *(Full self-host vs hosted comparison in Quick Start below.)*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10-3.13](https://img.shields.io/badge/python-3.10--3.13-blue.svg)](https://www.python.org/downloads/)
@@ -135,15 +137,15 @@ https://github-production-user-asset-6210df.s3.amazonaws.com/67838093/478689497-
 ---
 
 > [!WARNING]
-> **Security notice: impersonating copies of this repository.** This project is **Python-only** and has **no official npm / Node.js package**. The only official sources are this repository (`atilaahmettaner/tradingview-mcp`), the PyPI package [`tradingview-mcp-server`](https://pypi.org/project/tradingview-mcp-server/), and the hosted server at [pro.cryptosieve.com](https://pro.cryptosieve.com).
+> **Security notice: impersonating copies of this repository.** This project is **Python-only** and has **no official npm / Node.js package**. The only official sources are this repository (`atilaahmettaner/tradingview-mcp`), the PyPI package [`tradingview-mcp-server`](https://pypi.org/project/tradingview-mcp-server/), and the hosted version, TradingMCP, at [tradingmcp.ai](https://tradingmcp.ai/?utm_source=github&utm_medium=readme&utm_content=security_notice) (formerly pro.cryptosieve.com).
 >
 > Copies of this repository published under other accounts add a `package.json` whose dependencies install malware through npm (for example `oracle-redis`, [MAL-2026-16390](https://osv.dev/vulnerability/MAL-2026-16390)). If you cloned a "tradingview-mcp" repository from another account and ran `npm install`, treat that machine as compromised. Thanks to @roberttidball for the report (#101).
 
 ## 🚀 Quick Start (5 Minutes)
 
-**Two ways to run it — the same 37 tools either way:**
+**Two ways to run it — the same 39 tools either way:**
 
-| | 🧑‍💻 Self-host (this repo) | ☁️ Hosted — [pro.cryptosieve.com](https://pro.cryptosieve.com) |
+| | 🧑‍💻 Self-host (this repo) | ☁️ Hosted — [TradingMCP](https://tradingmcp.ai/?utm_source=github&utm_medium=readme&utm_content=quickstart_table) |
 |---|---|---|
 | **Price** | Free forever (MIT) | $9/mo Pro · $29/mo Pro+ · 14-day money-back guarantee |
 | **Time to first call** | ~5 minutes (Python + `uv`) | ~60 seconds (paste one URL) |
@@ -152,7 +154,7 @@ https://github-production-user-asset-6210df.s3.amazonaws.com/67838093/478689497-
 | **Limits** | Your hardware | 2,500/mo · 60/min (Pro) → 10,000/mo · 150/min (Pro+) |
 | **Best for** | Tinkerers, forkers, full control | Folks who'd rather skip the ops |
 
-> ☁️ **Zero setup:** paste one connector URL into Claude.ai, ChatGPT, Copilot, or Cursor → **[get started from $9/mo](https://pro.cryptosieve.com)** (14-day money-back guarantee). Everything below is for self-hosting.
+> ☁️ **Zero setup:** paste one connector URL into Claude.ai, ChatGPT, Copilot, or Cursor → **[get started with TradingMCP from $9/mo](https://tradingmcp.ai/?utm_source=github&utm_medium=readme&utm_content=quickstart_cta)** (14-day money-back guarantee). Everything below is for self-hosting.
 
 ### Install via pip
 ```bash
@@ -219,6 +221,22 @@ git clone https://github.com/atilaahmettaner/tradingview-mcp
 cd tradingview-mcp
 uv run tradingview-mcp
 ```
+
+<details>
+<summary>How is the hosted version different from TradingView's official MCP?</summary>
+<br>
+
+TradingView launched its own MCP server in public beta on 16 Sep 2026. It is a good product, and for some jobs it is the better pick. Here is the honest difference (competitor facts checked Oct 2026 against TradingView's own [MCP docs](https://www.tradingview.com/mcp/docs), [launch post](https://www.tradingview.com/blog/en/tradingview-mcp-server-public-beta-60864/) and [pricing page](https://www.tradingview.com/pricing/)):
+
+1. **Analysis, not just data.** TradingMCP runs multi-timeframe analysis, walk-forward backtests, smart-money and volume scans, and draws interactive charts in the chat. TradingView's MCP returns data, screens and a single-timeframe technical rating; its tool list has no backtesting or chart rendering ([docs](https://www.tradingview.com/mcp/docs), checked Oct 2026).
+2. **Morning market brief in one prompt.** Global market snapshot, futures overview, Bitcoin pulse and the Markets panel in a single answer.
+3. **$9 all-in, nothing else to subscribe to.** TradingView's MCP is included only in paid TradingView plans, Essential and higher; trial plans don't include it ([docs](https://www.tradingview.com/mcp/docs), [pricing](https://www.tradingview.com/pricing/), checked Oct 2026). TradingMCP is $9/mo Pro or $29/mo Pro+ with a 14-day money-back guarantee, and self-hosting this repo stays free.
+
+**Where TradingView's MCP wins:** fundamentals and analyst forecasts, SEC filings and earnings-call transcripts, editing your TradingView watchlists and alerts, and data that comes officially from TradingView itself ([docs](https://www.tradingview.com/mcp/docs), checked Oct 2026). If that is what you need, use theirs, or run both side by side.
+
+[Try TradingMCP](https://tradingmcp.ai/?utm_source=github&utm_medium=readme&utm_content=vs_official) · works in Claude, ChatGPT, Cursor, Copilot or any MCP client.
+
+</details>
 
 ---
 
@@ -402,7 +420,7 @@ Unlike basic screeners, this framework deploys **specialized AI agents** that de
 
 ---
 
-## 🔧 All 37 MCP Tools
+## 🔧 All 39 MCP Tools
 
 ### 📊 Backtesting Engine
 
