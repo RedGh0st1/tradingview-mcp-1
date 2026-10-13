@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Guarded MCP launcher: hard-stops an MCP server's startup unless a profile-bound
-trading-consent plugin-registration marker is present, fresh, AND written by the exact Hermes
-process that is spawning this launcher right now: only ``registered.<os.getppid()>.json`` is
-read, never any other process's marker -- see marker.py:check_marker.
+trading-consent plugin-registration marker was written by the exact Hermes process that is
+spawning this launcher right now: only ``registered.<os.getppid()>.json`` is read, never any
+other process's marker, and its recorded process start identity must match the parent's current
+one (so a reused pid does not pass) -- see marker.py:check_marker. Unsupported platforms, where
+that identity cannot be determined, always hard-stop.
 
 Usage (this is what ``hermes mcp add``'s --command/--args should point at, not the underlying
 node/docker command directly):
@@ -84,11 +86,12 @@ def main(argv: list[str]) -> "NoReturn":  # type: ignore[name-defined]
     plugin_id = os.environ.get(ENV_PLUGIN_ID, "").strip() or DEFAULT_PLUGIN_ID
     profile_home = _resolve_profile_home(profile)
 
-    # The hard gate is the parent's own marker, not mere freshness/liveness: Hermes spawns this
-    # launcher as a direct child, so os.getppid() here IS the pid of the Hermes process trying to
-    # launch the MCP server right now, and only that process's per-pid marker file is read. A
-    # marker written by any other process -- a concurrent CLI command, a prior Hermes run that
-    # has since exited, one where the plugin was disabled across a restart -- is never consulted.
+    # The hard gate is the parent's own marker, bound to the parent's process start identity:
+    # Hermes spawns this launcher as a direct child, so os.getppid() here IS the pid of the Hermes
+    # process trying to launch the MCP server right now, and only that process's per-pid marker
+    # file is read. A marker written by any other process -- a concurrent CLI command, a prior
+    # Hermes run that has since exited (even if the OS reused its pid), one where the plugin was
+    # disabled across a restart -- never matches. There is no wall-clock age limit.
     result = check_marker(
         profile_home, parent_pid=os.getppid(), expected_profile=profile,
         expected_plugin_id=plugin_id,

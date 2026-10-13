@@ -39,7 +39,8 @@ A second, independent gate: disabling/removing this plugin from a profile's `plu
 would otherwise leave the underlying `mcp_servers` command fully functional with zero approval
 gate and no error. Point the profile's MCP entry at this launcher instead of the real command
 directly; it hard-stops (never execs the real command) unless the marker written by the exact
-Hermes process that spawned it is present, matches the profile, and is fresh.
+Hermes process that spawned it is present, matches the profile, and still belongs to that same
+running process.
 
 **One marker per Hermes process.** Every process that loads this plugin -- the long-lived gateway,
 and also any one-shot `hermes` command that loads plugins (status, `plugins list`, etc.) -- writes
@@ -47,9 +48,31 @@ only its own `.trading_consent/registered.<pid>.json`. The launcher reads only
 `registered.<os.getppid()>.json` (its parent, the Hermes process launching the MCP server) and
 also requires the `pid` recorded inside that file to match, so concurrent Hermes processes cannot
 overwrite or invalidate each other's markers. The legacy shared `registered.json` from earlier
-versions is ignored. Markers left by exited processes are inert and are deliberately never
-auto-deleted: deleting by "that pid is no longer running" races with PID reuse and could delete a
-new process's valid marker.
+versions is ignored.
+
+**Bound to the process instance, not the clock.** Each marker records a `process_identity`: the
+writing process's start identity. The launcher looks up its parent's identity at launch time and
+requires an exact match. There is no wall-clock expiry, so a gateway that has been running for
+weeks keeps working. A marker left behind by an exited process stops matching once the OS hands
+that pid to a different process, so PID reuse cannot revive it. Markers without a
+`process_identity` (from the previous plugin version) are rejected.
+
+| Platform | Identity source | Format |
+| --- | --- | --- |
+| Linux | `/proc/sys/kernel/random/boot_id` + field 22 (`starttime`) of `/proc/<pid>/stat` | `linux:<boot_id>:<ticks since boot>` |
+| macOS | `/bin/ps -o lstart= -p <pid>` (argv list, no shell, `LC_ALL=C TZ=UTC` pinned) | `darwin:<UTC epoch seconds>` |
+| Windows, other | not supported | the launcher always hard-stops |
+
+If the identity cannot be determined -- the parent process is gone, `/proc` or `/bin/ps` is
+unavailable or prints something unexpected, or the platform is unsupported -- no marker is
+written and the launcher hard-stops. It never falls back to an unchecked launch. The macOS value
+has one-second resolution, so a pid would have to be reused by a process started within the same
+second as the original. macOS allocates pids sequentially before wrapping, which makes that
+practically unreachable.
+
+Markers left by exited processes are inert and are deliberately never auto-deleted: deleting by
+"that pid is no longer running" races with PID reuse and could delete a new process's valid
+marker.
 
 This requires the plugin's `register()` to run inside the Hermes process that spawns MCP servers,
 which is Hermes's default (`plugins.isolation: in_process`). Under `plugins.isolation: host`,
@@ -94,9 +117,10 @@ hermes --profile trader plugins install \
 this plugin, as pushed to that remote (`--ref` rejects branches, tags, and short SHAs).
 
 At a commit that includes this documentation, Hermes's install-time scanner gives the plugin a
-**safe** verdict, so no override is needed. It reports one expected, informational MEDIUM finding:
-`subprocess.run` in `__init__.py`, which is the intentional best-effort `osascript` notification
-(argument list, no shell). If the scanner ever reports **caution** for the pinned SHA, stop and
+**safe** verdict, so no override is needed. It reports two expected, informational MEDIUM
+findings, both argument-list `subprocess.run` calls with no shell: in `__init__.py`, the
+intentional best-effort `osascript` notification; in `marker.py`, the macOS `/bin/ps` process
+start-identity lookup. If the scanner ever reports **caution** for the pinned SHA, stop and
 review the findings rather than overriding by default. Add `--force` only after that review, and
 only together with that exact reviewed `--ref` SHA. A **dangerous** verdict blocks even with
 `--force`. Keep scanning enabled: do not disable `plugins.scan_on_install` instead. Note that
