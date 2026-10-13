@@ -1,5 +1,11 @@
 # TradingView MCP Market Data & Technical Analysis for AI Assistants
 
+<p align="center">
+  <a href="assets/tradingmcp-film-15.mp4"><img src="assets/tradingmcp-film-15.webp" width="820" alt="15-second product film: an AI is asked 'What did the market do today?', a live market board assembles, Ethereum is marked as the day's top mover and its daily chart with Bollinger Bands is drawn in the chat — TradingMCP, the hosted version of this server" /></a>
+  <br>
+  <sub>15 seconds, real output (market data as of 13 Oct 2026) · this server, hosted as <a href="https://tradingmcp.ai/?utm_source=github&utm_medium=readme&utm_content=film">TradingMCP</a> · <a href="assets/tradingmcp-film-15.mp4">watch in full quality</a></sub>
+</p>
+
 <a href="https://trendshift.io/repositories/25110" target="_blank"><img src="https://trendshift.io/api/badge/repositories/25110" alt="atilaahmettaner%2Ftradingview-mcp | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 **TradingView MCP server** — real-time market data, technical indicators, screeners, and backtesting for Claude, ChatGPT, Cursor, Copilot, and any MCP client. Stocks, crypto, forex & futures across global exchanges.
