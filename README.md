@@ -1,9 +1,9 @@
 # TradingView MCP Market Data & Technical Analysis for AI Assistants
 
 <p align="center">
-  <a href="assets/tradingmcp-film-15.mp4"><img src="assets/tradingmcp-film-15.webp" width="820" alt="15-second product film: an AI is asked 'What did the market do today?', a live market board assembles, Ethereum is marked as the day's top mover and its daily chart with Bollinger Bands is drawn in the chat — TradingMCP, the hosted version of this server" /></a>
+  <a href="https://github.com/atilaahmettaner/tradingview-mcp/blob/main/assets/tradingmcp-film-15.mp4"><img src="https://raw.githubusercontent.com/atilaahmettaner/tradingview-mcp/main/assets/tradingmcp-film-15.webp" width="820" alt="15-second product film: an AI is asked 'What did the market do today?', a live market board assembles, Ethereum is marked as the day's top mover and its daily chart with Bollinger Bands is drawn in the chat — TradingMCP, the hosted version of this server" /></a>
   <br>
-  <sub>15 seconds, real output (market data as of 13 Oct 2026) · this server, hosted as <a href="https://tradingmcp.ai/?utm_source=github&utm_medium=readme&utm_content=film">TradingMCP</a> · <a href="assets/tradingmcp-film-15.mp4">watch in full quality</a></sub>
+  <sub>15 seconds, real output (market data as of 13 Oct 2026) · this server, hosted as <a href="https://tradingmcp.ai/?utm_source=github&utm_medium=readme&utm_content=film">TradingMCP</a> · <a href="https://github.com/atilaahmettaner/tradingview-mcp/blob/main/assets/tradingmcp-film-15.mp4">watch in full quality</a></sub>
 </p>
 
 <a href="https://trendshift.io/repositories/25110" target="_blank"><img src="https://trendshift.io/api/badge/repositories/25110" alt="atilaahmettaner%2Ftradingview-mcp | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
@@ -16,22 +16,22 @@ Backtesting + live sentiment + Yahoo Finance + 39 technical-analysis tools — t
 **[Morning market brief in one prompt](https://tradingmcp.ai/?utm_source=github&utm_medium=readme&utm_content=brief):** ask "give me this morning's market brief" and get global indices, futures, the Bitcoin pulse and the hosted Markets panel in one answer. Charts are drawn right in the chat (demo below).
 
 <p align="center">
-  <img src=".github/assets/tradingview-mcp-demo.gif" width="820" alt="TradingView MCP in an AI chat: ask for the top gainers on Binance and get ranked, real-time results — one of 39 tools" />
+  <img src="https://raw.githubusercontent.com/atilaahmettaner/tradingview-mcp/main/.github/assets/tradingview-mcp-demo.gif" width="820" alt="TradingView MCP in an AI chat: ask for the top gainers on Binance and get ranked, real-time results — one of 39 tools" />
 </p>
 
 **🆕 The [hosted version (TradingMCP)](https://tradingmcp.ai/?utm_source=github&utm_medium=readme&utm_content=charts) now draws.** Ask for a chart and an interactive candlestick view (1d / 1h / 15m, optional Bollinger overlay) renders live **inside the conversation** via MCP Apps — and the AI reads the band values back to you:
 
 <p align="center">
-  <img src="docs/assets/bollinger-15m-chart-demo.gif" width="820" alt="MCP Apps demo: asking Claude for a 15-minute Bollinger chart — an interactive candlestick chart with Bollinger Bands renders inside the conversation and Claude analyzes the band values" />
+  <img src="https://raw.githubusercontent.com/atilaahmettaner/tradingview-mcp/main/docs/assets/bollinger-15m-chart-demo.gif" width="820" alt="MCP Apps demo: asking Claude for a 15-minute Bollinger chart — an interactive candlestick chart with Bollinger Bands renders inside the conversation and Claude analyzes the band values" />
 </p>
 
 **[Paste one URL](https://tradingmcp.ai/?utm_source=github&utm_medium=readme&utm_content=paste_url) (or `pip install`), then just ask.** Real output, straight from the live server:
 
 <p align="center">
-  <img src="assets/showcase-top-gainers.png" width="820" alt="Real output: top crypto gainers on KuCoin with 24h change, RSI and signal — ranked table returned in chat" />
+  <img src="https://raw.githubusercontent.com/atilaahmettaner/tradingview-mcp/main/assets/showcase-top-gainers.png" width="820" alt="Real output: top crypto gainers on KuCoin with 24h change, RSI and signal — ranked table returned in chat" />
 </p>
 <p align="center">
-  <img src="assets/showcase-gold-mtf.png" width="820" alt="Real output: multi-timeframe gold analysis — weekly to 15m trend alignment with a LEAN BULLISH verdict" />
+  <img src="https://raw.githubusercontent.com/atilaahmettaner/tradingview-mcp/main/assets/showcase-gold-mtf.png" width="820" alt="Real output: multi-timeframe gold analysis — weekly to 15m trend alignment with a LEAN BULLISH verdict" />
 </p>
 
 **Try these first** — they work in Claude, ChatGPT, Cursor, or any MCP client:
@@ -119,7 +119,7 @@ https://github-production-user-asset-6210df.s3.amazonaws.com/67838093/478689497-
 
 ## 🏗️ Architecture
 
-![tradingview-mcp Architecture](assets/architecture.png)
+![tradingview-mcp Architecture](https://raw.githubusercontent.com/atilaahmettaner/tradingview-mcp/main/assets/architecture.png)
 
 ---
 
@@ -311,7 +311,7 @@ else:
         ...
 ```
 
-Stable codes are defined in [`core/errors.py`](src/tradingview_mcp/core/errors.py).
+Stable codes are defined in [`core/errors.py`](https://github.com/atilaahmettaner/tradingview-mcp/blob/main/src/tradingview_mcp/core/errors.py).
 
 ---
 
@@ -402,7 +402,7 @@ backtest RSI strategy for AAPL, 1 year
 compare all strategies for BTC-USD
 ```
 
-👉 **[Full OpenClaw Setup Guide →](OPENCLAW.md)**
+👉 **[Full OpenClaw Setup Guide →](https://github.com/atilaahmettaner/tradingview-mcp/blob/main/OPENCLAW.md)**
 
 ---
 
@@ -575,7 +575,7 @@ Every sponsor directly funds new features like Walk-Forward Backtesting, Twitter
 
 ## 📄 License
 
-MIT License — see [LICENSE](LICENSE) for details.
+MIT License — see [LICENSE](https://github.com/atilaahmettaner/tradingview-mcp/blob/main/LICENSE) for details.
 
 ---
 
